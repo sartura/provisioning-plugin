@@ -14,6 +14,19 @@ static adiag_node_func_m table_operational[] = {
     { "cpu-usage", adiag_cpu_usage },
 };
 
+void
+sr_plugin_cleanup_cb(sr_session_ctx_t *session, void *private_ctx)
+{
+    INF("Plugin cleanup called, private_ctx is %s available.", private_ctx ? "" : "not");
+    if (!private_ctx) return;
+
+    struct plugin_ctx *ctx = private_ctx;
+    sr_unsubscribe(session, ctx->subscription);
+    free(ctx);
+
+    SRP_LOG_DBG_MSG("Plugin cleaned-up successfully");
+}
+
 static int
 data_provider_cb(const char *cb_xpath, sr_val_t **values, size_t *values_cnt,
                  void *private_ctx)
@@ -127,6 +140,8 @@ main()
     while (!exit_application) {
         sleep(1);  /* or do some more useful work... */
     }
+
+    sr_plugin_cleanup_cb(session, private_ctx);
 
     status = EXIT_SUCCESS;
 err_ses:
