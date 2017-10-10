@@ -21,7 +21,16 @@ sr_plugin_cleanup_cb(sr_session_ctx_t *session, void *private_ctx)
     if (!private_ctx) return;
 
     struct plugin_ctx *ctx = private_ctx;
-    sr_unsubscribe(session, ctx->subscription);
+
+    if (ctx->subscription != NULL)
+        sr_unsubscribe(session, ctx->subscription);
+
+    if (ctx->startup_session != NULL)
+        sr_session_stop(ctx->startup_session);
+
+    if (ctx->startup_connection != NULL)
+        sr_disconnect(ctx->startup_connection);
+
     free(ctx);
 
     SRP_LOG_DBG_MSG("Plugin cleaned-up successfully");
@@ -72,17 +81,15 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
                           SR_SESS_DEFAULT, &ctx->startup_session);
     SR_CHECK_RET(rc, err_conn, "Error by sr_session_start: %s", sr_strerror(rc));
 
-    *private_ctx = ctx;
-
     /* Operational data handling. */
-    sr_subscription_ctx_t *subscription = NULL;
     INF_MSG("Subscribing to diagnostics");
     rc = sr_dp_get_items_subscribe(session, "/provisioning:hgw-diagnostics",
                                    data_provider_cb, *private_ctx,
-                                   SR_SUBSCR_DEFAULT, &subscription);
+                                   SR_SUBSCR_DEFAULT, &ctx->subscription);
     SR_CHECK_RET(rc, err_ses, "Error by sr_dp_get_items_subscribe: %s",
                  sr_strerror(rc));
 
+    *private_ctx = ctx;
     SRP_LOG_DBG_MSG("Plugin initialized successfully");
     goto exit;
 
