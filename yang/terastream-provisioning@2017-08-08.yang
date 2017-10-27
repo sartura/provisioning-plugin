@@ -2,7 +2,7 @@ module terastream-provisioning {
 
     namespace "urn:terastream:provisioning";
 
-    prefix "ts-sip";
+    prefix "ts-ps";
 
     organization
         "Deutsche Telekom AG";
