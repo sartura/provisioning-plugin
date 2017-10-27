@@ -20,7 +20,7 @@ adiag_version(sr_val_t *val)
     fscanf(fp,"%s", buff);
     fclose(fp);
 
-    sr_val_set_xpath(val, "/provisioning:hgw-diagnostics/version");
+    sr_val_set_xpath(val, "/terastream-provisioning:hgw-diagnostics/version");
     sr_val_set_str_data(val, SR_STRING_T, buff);
 
     return SR_ERR_OK;
@@ -42,7 +42,7 @@ adiag_free_memory(sr_val_t *val)
     }
     INF_MSG("2.");
 
-    rc = sr_val_set_xpath(val, "/provisioning:hgw-diagnostics/memory-status");
+    rc = sr_val_set_xpath(val, "/terastream-provisioning:hgw-diagnostics/memory-status");
     val->type = SR_UINT32_T;
     val->data.uint32_val = (uint32_t) ((vfs.f_blocks - vfs.f_bavail) / (double)(vfs.f_blocks) * 100.0);
     /* val->data.uint32_val = 42; */
@@ -80,7 +80,7 @@ adiag_cpu_usage(sr_val_t *val)
 
     cpu_usage = ((b[0]+b[1]+b[2]) - (a[0]+a[1]+a[2])) / ((b[0]+b[1]+b[2]+b[3]) - (a[0]+a[1]+a[2]+a[3]));
 
-    rc = sr_val_set_xpath(val, "/provisioning:hgw-diagnostics/cpu-usage");
+    rc = sr_val_set_xpath(val, "/terastream-provisioning:hgw-diagnostics/cpu-usage");
     val->type = SR_UINT32_T;
     val->data.uint32_val = (uint32_t) (cpu_usage * 100.0);
 

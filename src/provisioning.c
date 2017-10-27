@@ -3,7 +3,7 @@
 #include "adiag_functions.h"
 #include "common.h"
 
-const char *YANG_MODEL = "provisioning";
+const char *YANG_MODEL = "terastream-provisioning";
 const char *PLUGIN_NAME = "sysrepo-plugin-dt-provisioning";
 
 /* Mappings of operational nodes to corresponding handler functions. */
@@ -83,7 +83,7 @@ sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
 
     /* Operational data handling. */
     INF_MSG("Subscribing to diagnostics");
-    rc = sr_dp_get_items_subscribe(session, "/provisioning:hgw-diagnostics",
+    rc = sr_dp_get_items_subscribe(session, "/terastream-provisioning:hgw-diagnostics",
                                    data_provider_cb, *private_ctx,
                                    SR_SUBSCR_DEFAULT, &ctx->subscription);
     SR_CHECK_RET(rc, err_ses, "Error by sr_dp_get_items_subscribe: %s",
