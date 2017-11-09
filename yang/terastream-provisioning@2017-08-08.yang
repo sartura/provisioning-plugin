@@ -1,6 +1,6 @@
 module terastream-provisioning {
 
-    namespace "urn:terastream:provisioning";
+    namespace "http://terastrm.net/ns/yang/terastream-provisioning";
 
     prefix "ts-ps";
 
