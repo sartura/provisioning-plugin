@@ -32,5 +32,13 @@ module terastream-provisioning {
        leaf "cpu-usage" {
             type "uint32";
        }
+
+       leaf "version-running-bank" {
+           type "string";
+       }
+
+	   leaf "version-other-bank" {
+           type "string";
+       }
     }
 }

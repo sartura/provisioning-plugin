@@ -12,6 +12,8 @@ static adiag_node_func_m table_operational[] = {
     {"version", adiag_version},
     {"memory-status", adiag_free_memory},
     {"cpu-usage", adiag_cpu_usage},
+    {"version-running-bank", adiag_running_bank},
+    {"version-other-bank", adiag_other_bank},
 };
 
 void sr_plugin_cleanup_cb(sr_session_ctx_t *session, void *private_ctx)

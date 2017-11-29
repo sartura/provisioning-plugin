@@ -12,5 +12,5 @@ typedef struct adiag_node_func_mapping {
 int adiag_version(sr_val_t *);
 int adiag_cpu_usage(sr_val_t *);
 int adiag_free_memory(sr_val_t *);
-
-int diag_firmware_version(sr_val_t *);
+int adiag_running_bank(sr_val_t *);
+int adiag_other_bank(sr_val_t *);

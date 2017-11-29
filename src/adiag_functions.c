@@ -88,3 +88,75 @@ int adiag_cpu_usage(sr_val_t *val)
 error:
     return rc;
 }
+
+#define MAX_BANK_SIZE 64
+
+int adiag_running_bank(sr_val_t *val)
+{
+    const char *filename = "/tmp/this_bank_iopver";
+    int rc = SR_ERR_OK;
+
+    char source[MAX_BANK_SIZE] = "";
+    FILE *file = fopen(filename, "r");
+    if (NULL == file) {
+        ERR_MSG("fopen returned NULL");
+        goto error;
+    }
+
+    size_t newLen = fread(source, sizeof(char), MAX_BANK_SIZE, file);
+    if (ferror(file) != 0) {
+        ERR_MSG("error reading file");
+        goto error;
+    }
+	/* remove new line */
+    source[--newLen] = '\0';
+
+error:
+    if (NULL != file) {
+        fclose(file);
+    }
+
+	rc = sr_val_set_xpath(val, "/terastream-provisioning:hgw-diagnostics/version-running-bank");
+    SR_CHECK_RET(rc, exit, "Couldn't set xpath %s", sr_strerror(rc));
+
+    rc = sr_val_set_str_data(val, SR_STRING_T, source);
+    SR_CHECK_RET(rc, exit, "Couldn't set string value %s", sr_strerror(rc));
+
+exit:
+    return rc;
+}
+
+int adiag_other_bank(sr_val_t *val)
+{
+    const char *filename = "/tmp/other_bank_iopver";
+    int rc = SR_ERR_OK;
+
+    char source[MAX_BANK_SIZE] = "";
+    FILE *file = fopen(filename, "r");
+    if (NULL == file) {
+        ERR_MSG("fopen returned NULL");
+        goto error;
+    }
+
+    size_t newLen = fread(source, sizeof(char), MAX_BANK_SIZE, file);
+    if (ferror(file) != 0) {
+        ERR_MSG("error reading file");
+        goto error;
+    }
+	/* remove new line */
+    source[--newLen] = '\0';
+
+error:
+    if (NULL != file) {
+        fclose(file);
+    }
+
+	rc = sr_val_set_xpath(val, "/terastream-provisioning:hgw-diagnostics/version-other-bank");
+    SR_CHECK_RET(rc, exit, "Couldn't set xpath %s", sr_strerror(rc));
+
+    rc = sr_val_set_str_data(val, SR_STRING_T, source);
+    SR_CHECK_RET(rc, exit, "Couldn't set string value %s", sr_strerror(rc));
+
+exit:
+    return rc;
+}
