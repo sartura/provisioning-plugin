@@ -1,0 +1,113 @@
+[login]
+
+address = "192.168.1.1:830"
+username = "root"
+password = "root"
+
+### hgw-diagnostics ###
+[[unitTest]]
+
+name = "hgw-diagnostics"
+
+[[unitTest.test]]
+
+RPC = """
+<get>
+    <filter  xmlns:terastream-provisioning='http://terastrm.net/ns/yang/terastream-provisioning'  type="xpath" select="/terastream-provisioning:hgw-diagnostics">
+    </filter>
+</get>
+"""
+
+Reply = """<data xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"><hgw-diagnostics xmlns="http://terastrm.net/ns/yang/terastream-provisioning"><version>.*</version><memory-status>.*/memory-status><cpu-usage>.*</cpu-usage><version-running-bank>.*</version-running-bank><version-other-bank>.*</version-other-bank></hgw-diagnostics></data>"""
+
+Type = "regexMatch"
+
+### version ###
+[[unitTest]]
+
+name = "version"
+
+[[unitTest.test]]
+
+RPC = """
+<get>
+    <filter  xmlns:terastream-provisioning='http://terastrm.net/ns/yang/terastream-provisioning'  type="xpath" select="/terastream-provisioning:hgw-diagnostics/version">
+    </filter>
+</get>
+"""
+
+Reply = """<data xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"><hgw-diagnostics xmlns="http://terastrm.net/ns/yang/terastream-provisioning"><version>.*</version></hgw-diagnostics></data>"""
+
+Type = "regexMatch"
+
+### memory-status ###
+[[unitTest]]
+
+name = "memory-status"
+
+[[unitTest.test]]
+
+RPC = """
+<get>
+    <filter  xmlns:terastream-provisioning='http://terastrm.net/ns/yang/terastream-provisioning'  type="xpath" select="/terastream-provisioning:hgw-diagnostics/memory-status">
+    </filter>
+</get>
+"""
+
+Reply = """<data xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"><hgw-diagnostics xmlns="http://terastrm.net/ns/yang/terastream-provisioning"><memory-status>.*/memory-status></hgw-diagnostics></data>"""
+
+Type = "regexMatch"
+
+### cpu-usage ###
+[[unitTest]]
+
+name = "cpu-usage"
+
+[[unitTest.test]]
+
+RPC = """
+<get>
+    <filter  xmlns:terastream-provisioning='http://terastrm.net/ns/yang/terastream-provisioning'  type="xpath" select="/terastream-provisioning:hgw-diagnostics/cpu-usage">
+    </filter>
+</get>
+"""
+
+Reply = """<data xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"><hgw-diagnostics xmlns="http://terastrm.net/ns/yang/terastream-provisioning"><cpu-usage>.*</cpu-usage></hgw-diagnostics></data>"""
+
+Type = "regexMatch"
+
+### version-running-bank ###
+[[unitTest]]
+
+name = "version-running-bank"
+
+[[unitTest.test]]
+
+RPC = """
+<get>
+    <filter  xmlns:terastream-provisioning='http://terastrm.net/ns/yang/terastream-provisioning'  type="xpath" select="/terastream-provisioning:hgw-diagnostics/version-running-bank">
+    </filter>
+</get>
+"""
+
+Reply = """<data xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"><hgw-diagnostics xmlns="http://terastrm.net/ns/yang/terastream-provisioning"><version-running-bank>.*</version-running-bank></hgw-diagnostics></data>"""
+
+Type = "regexMatch"
+
+### version-other-bank ###
+[[unitTest]]
+
+name = "version-other-bank"
+
+[[unitTest.test]]
+
+RPC = """
+<get>
+    <filter  xmlns:terastream-provisioning='http://terastrm.net/ns/yang/terastream-provisioning'  type="xpath" select="/terastream-provisioning:hgw-diagnostics/version-other-bank">
+    </filter>
+</get>
+"""
+
+Reply = """<data xmlns="urn:ietf:params:xml:ns:netconf:base:1.0"><hgw-diagnostics xmlns="http://terastrm.net/ns/yang/terastream-provisioning"><version-other-bank>.*</version-other-bank></hgw-diagnostics></data>"""
+
+Type = "regexMatch"
