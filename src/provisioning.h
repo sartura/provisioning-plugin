@@ -5,8 +5,14 @@
 
 #define ARR_SIZE(a) sizeof a / sizeof a[0]
 
-struct plugin_ctx {
-    sr_subscription_ctx_t *subscription;
-    sr_conn_ctx_t *startup_connection;
-    sr_session_ctx_t *startup_session;
-};
+typedef struct ctx_s {
+	const char *yang_model;
+	sr_session_ctx_t *sess;
+	sr_subscription_ctx_t *sub;
+} ctx_t;
+
+typedef struct ubus_ctx_s {
+	ctx_t *ctx;
+	sr_val_t **values;
+	size_t *values_cnt;
+} ubus_ctx_t;
