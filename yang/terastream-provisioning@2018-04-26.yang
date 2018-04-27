@@ -10,9 +10,25 @@ module terastream-provisioning {
     description
         "This module defines HGW provisioning used in the TeraStream home gateway project.";
 
+    revision "2018-04-26" {
+        description
+            "Version 0.1.1
+            add percent type
+            add disk-usage leaf
+            memory-status leaf is now used for available RAM and is of percent type
+            cpu-usage is now a percent type";
+    }
+
     revision "2017-08-08" {
         description
             "Version 0.1.0 -- Initial version.";
+    }
+
+    typedef percent {
+        type uint8 {
+            range "0 .. 100";
+        }
+        description "Percentage";
     }
 
     container "hgw-diagnostics" {
@@ -25,12 +41,16 @@ module terastream-provisioning {
            type "string";
        }
 
+       leaf "disk-usage" {
+            type "percent";
+       }
+
        leaf "memory-status" {
-            type "uint32";
+            type "percent";
        }
 
        leaf "cpu-usage" {
-            type "uint32";
+            type "percent";
        }
 
        leaf "version-running-bank" {

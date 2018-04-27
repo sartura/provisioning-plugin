@@ -2,7 +2,7 @@
 
 case "$1" in
 	list)
-		echo '{ "memory_bank": { }, "info": { } }'
+		echo '{ "memory_bank": { }, "info": { }, "fs": {} }'
 	;;
 	call)
 		case "$2" in
@@ -66,7 +66,47 @@ case "$1" in
 }
 '
 			;;
+			fs)
+				# return json object or an array
+				echo '{
+    "filesystem": [
+		{
+			"name": "ubi0:rootfs_1",
+			"1kblocks": 110440,
+			"used": 21260,
+			"available": 89180,
+			"use_pre": 19,
+			"mounted_on": "\/rom"
+		},
+		{
+			"name": "devtmpfs",
+			"1kblocks": 62324,
+			"used": 0,
+			"available": 62324,
+			"use_pre": 0,
+			"mounted_on": "\/dev"
+		},
+		{
+			"name": "tmpfs",
+			"1kblocks": 62444,
+			"used": 180,
+			"available": 62264,
+			"use_pre": 0,
+			"mounted_on": "\/tmp"
+		},
+		{
+			"name": "overlayfs:\/overlay",
+			"1kblocks": 110440,
+			"used": 21260,
+			"available": 89180,
+			"use_pre": 19,
+			"mounted_on": "\/"
+		}
+	]
 
+}
+'
+			;;
 		esac
 	;;
 esac

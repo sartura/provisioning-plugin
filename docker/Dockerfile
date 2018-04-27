@@ -163,11 +163,12 @@ RUN \
 RUN \
       cd /opt/dev && \
 	  git clone https://github.com/sartura/provisioning-plugin.git && \
-	  cd provisioning-plugin && mkdir build && cd build && \
+      cd provisioning-plugin && git checkout devel && \
+	  mkdir build && cd build && \
 	  cmake .. && \
 	  make -j2 && \
 	  make install && \
-	  sysrepoctl -i -g ../yang/terastream-provisioning@2017-08-08.yang
+	  sysrepoctl -i -g ../yang/terastream-provisioning@2018-04-26.yang
 
 ENV EDITOR vim
 EXPOSE 830
