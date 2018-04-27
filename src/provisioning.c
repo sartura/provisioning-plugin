@@ -18,7 +18,7 @@
 const char *yang_model = "terastream-provisioning";
 const char *PLUGIN_NAME = "sysrepo-plugin-dt-provisioning";
 
-static void sr_plugin_cleanup_cb(sr_session_ctx_t *session, void *private_ctx)
+void sr_plugin_cleanup_cb(sr_session_ctx_t *session, void *private_ctx)
 {
     INF("Plugin cleanup called, private_ctx is %s available.", private_ctx ? "" : "not");
     if (!private_ctx)
@@ -574,7 +574,7 @@ cleanup:
     return rc;
 }
 
-static int sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
+int sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx)
 {
     /* sr_subscription_ctx_t *subscription = NULL; */
     int rc = SR_ERR_OK;
