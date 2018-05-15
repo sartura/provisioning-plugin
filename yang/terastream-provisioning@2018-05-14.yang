@@ -10,6 +10,12 @@ module terastream-provisioning {
     description
         "This module defines HGW provisioning used in the TeraStream home gateway project.";
 
+    revision "2018-05-14" {
+        description
+            "Version 0.1.1
+            Add leaf's name, hardware, model and board-id.";
+    }
+
     revision "2018-04-26" {
         description
             "Version 0.1.1
@@ -58,6 +64,22 @@ module terastream-provisioning {
        }
 
 	   leaf "version-other-bank" {
+           type "string";
+       }
+
+       leaf "name" {
+           type "string";
+       }
+
+       leaf "hardware" {
+           type "string";
+       }
+
+       leaf "model" {
+           type "string";
+       }
+
+       leaf "board-id" {
            type "string";
        }
     }

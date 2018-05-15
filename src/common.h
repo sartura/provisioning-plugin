@@ -98,4 +98,23 @@
 		}                                                                                                                                            \
 	} while (0)
 
+#define UBUS_CHECK_RET_MSG(RET, RC, LABEL, MSG)                                                                                                      \
+	do {                                                                                                                                             \
+		if (UBUS_STATUS_OK != RET) {                                                                                                                 \
+			*RC = SR_ERR_INTERNAL;                                                                                                                   \
+			ERR_MSG(MSG) SRP_LOG_ERR_MSG(MSG);                                                                                                       \
+			goto LABEL;                                                                                                                              \
+		}                                                                                                                                            \
+	} while (0)
+
+#define UBUS_CHECK_RET(RET, RC, LABEL, MSG, ...)                                                                                                     \
+	do {                                                                                                                                             \
+		if (UBUS_STATUS_OK != RET) {                                                                                                                 \
+			*RC = SR_ERR_INTERNAL;                                                                                                                   \
+			ERR(MSG, __VA_ARGS__) SRP_LOG_ERR(MSG, __VA_ARGS__);                                                                                     \
+			goto LABEL;                                                                                                                              \
+		}                                                                                                                                            \
+	} while (0)
+
+
 #endif /* __COMMON_H__ */
