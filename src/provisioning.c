@@ -180,20 +180,6 @@ cleanup:
     return rc;
 }
 
-static int ubus_system(struct list_head *list, struct json_object *top, char *ubus_obj_name, char *xpath) {
-    struct json_object *jobj_release = NULL;
-    int rc = SR_ERR_OK;
-
-    json_object_object_get_ex(top, "system", &jobj_release);
-    CHECK_NULL_MSG(jobj_release, &rc, cleanup, "json_object_object_get_ex: failed");
-
-    rc = ubus_string_to_sr(list, jobj_release, ubus_obj_name, xpath);
-    CHECK_RET_MSG(rc, cleanup, "ubus_uint8_to_sr: failed");
-
-cleanup:
-    return rc;
-}
-
 void ubus_cb(struct ubus_request *req, int type, struct blob_attr *msg) {
     int rc = SR_ERR_OK;
     ubus_data_t *ctx = req->priv;
@@ -370,17 +356,8 @@ static int sr_oper_data_cb(const char *xpath, sr_val_t **values, size_t *values_
     rc = ubus_string_to_sr(&list, ubus_ctx.memory_bank, "current_bank_firmware", XPATH_RUNNING_BANK);
     CHECK_RET_MSG(rc, cleanup, "ubus_string_to_str: failed");
 
-    rc = ubus_system(&list, ubus_ctx.info, "name", XPATH_NAME);
-    CHECK_RET_MSG(rc, cleanup, "ubus_string_to_str: failed");
-
-    rc = ubus_system(&list, ubus_ctx.info, "boardid", XPATH_BOARDID);
-    CHECK_RET_MSG(rc, cleanup, "ubus_string_to_str: failed");
-
-    rc = ubus_system(&list, ubus_ctx.info, "hardware", XPATH_HARDWARE);
-    CHECK_RET_MSG(rc, cleanup, "ubus_string_to_str: failed");
-
-    rc = ubus_system(&list, ubus_ctx.info, "model", XPATH_MODEL);
-    CHECK_RET_MSG(rc, cleanup, "ubus_string_to_str: failed");
+    rc = ubus_version(&list, ubus_ctx.board, "revision", XPATH_VERSION);
+    CHECK_RET_MSG(rc, cleanup, "ubus_version: failed");
 
     rc = ubus_disk_usage(&list, ubus_ctx.fs, "use_pre", XPATH_DISK);
     CHECK_RET_MSG(rc, cleanup, "ubus_disk_usage: failed");
@@ -388,11 +365,25 @@ static int sr_oper_data_cb(const char *xpath, sr_val_t **values, size_t *values_
     rc = ubus_memory_status(&list, ubus_ctx.info, "memoryKB", XPATH_MEMORY);
     CHECK_RET_MSG(rc, cleanup, "ubus_memory_status: failed");
 
-    rc = ubus_system(&list, ubus_ctx.info, "cpu_per", XPATH_CPU);
-    CHECK_RET_MSG(rc, cleanup, "ubus_memory_status: failed");
 
-    rc = ubus_version(&list, ubus_ctx.board, "revision", XPATH_VERSION);
-    CHECK_RET_MSG(rc, cleanup, "ubus_version: failed");
+    struct json_object *jobj_system = NULL;
+    json_object_object_get_ex(ubus_ctx.info, "system", &jobj_system);
+    CHECK_NULL_MSG(jobj_system, &rc, cleanup, "json_object_object_get_ex: failed");
+
+    rc = ubus_string_to_sr(&list, jobj_system, "name", XPATH_NAME);
+    CHECK_RET_MSG(rc, cleanup, "ubus_string_to_str: failed");
+
+    rc = ubus_string_to_sr(&list, jobj_system, "boardid", XPATH_BOARDID);
+    CHECK_RET_MSG(rc, cleanup, "ubus_string_to_str: failed");
+
+    rc = ubus_string_to_sr(&list, jobj_system, "hardware", XPATH_HARDWARE);
+    CHECK_RET_MSG(rc, cleanup, "ubus_string_to_str: failed");
+
+    rc = ubus_string_to_sr(&list, jobj_system, "model", XPATH_MODEL);
+    CHECK_RET_MSG(rc, cleanup, "ubus_string_to_str: failed");
+
+    rc = ubus_uint8_to_sr(&list, jobj_system, "cpu_per", XPATH_CPU);
+    CHECK_RET_MSG(rc, cleanup, "ubus_memory_status: failed");
 
     size_t cnt = list_size(&list);
     size_t j = 0;
