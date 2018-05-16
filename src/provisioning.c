@@ -6,7 +6,7 @@
 #include <json-c/json.h>
 
 #include "provisioning.h"
-#include "common.h"
+#include <sr_uci.h>
 
 #define XPATH_BASE "/terastream-provisioning:hgw-diagnostics"
 #define XPATH_VERSION "/terastream-provisioning:hgw-diagnostics/version"
@@ -39,61 +39,6 @@ void sr_plugin_cleanup_cb(sr_session_ctx_t *session, void *private_ctx) {
     ctx = NULL;
 
     DBG_MSG("Plugin cleaned-up successfully");
-}
-
-static int ubus_string_to_sr(struct list_head *list, struct json_object *top, char *ubus_obj_name, char *xpath) {
-    const char *jobj_string = NULL;
-    struct json_object *jobj = NULL;
-    struct value_node *list_value = NULL;
-    int rc = SR_ERR_OK;
-
-    list_value = calloc(1, sizeof *list_value);
-    CHECK_NULL_MSG(list_value, &rc, cleanup, "calloc: failed");
-
-    json_object_object_get_ex(top, ubus_obj_name, &jobj);
-    CHECK_NULL(jobj, &rc, cleanup, "json_object_object_get_ex: failed on %s", json_object_get_string(jobj));
-
-    jobj_string = json_object_get_string(jobj);
-    CHECK_NULL_MSG(jobj_string, &rc, cleanup, "json_object_get_string: failed");
-
-    list_value->value.xpath = xpath;
-    list_value->value.type = SR_STRING_T;
-    list_value->value.data.string_val= (char *) jobj_string;
-    list_add(&list_value->head, list);
-
-    return rc;
-cleanup:
-    if (NULL != list_value) {
-        free(list_value);
-    }
-    return rc;
-}
-
-static int ubus_uint8_to_sr(struct list_head *list, struct json_object *top, char *ubus_obj_name, char *xpath) {
-    uint8_t jobj_int = 0;
-    struct json_object *jobj = NULL;
-    struct value_node *list_value = NULL;
-    int rc = SR_ERR_OK;
-
-    list_value = calloc(1, sizeof *list_value);
-    CHECK_NULL_MSG(list_value, &rc, cleanup, "calloc: failed");
-
-    json_object_object_get_ex(top, ubus_obj_name, &jobj);
-    CHECK_NULL_MSG(jobj, &rc, cleanup, "json_object_object_get_ex: failed");
-
-    jobj_int = (uint8_t) json_object_get_int(jobj);
-
-    list_value->value.xpath = xpath;
-    list_value->value.type = SR_UINT8_T;
-    list_value->value.data.uint8_val = jobj_int;
-    list_add(&list_value->head, list);
-
-    return rc;
-cleanup:
-    if (NULL != list_value) {
-        free(list_value);
-    }
-    return rc;
 }
 
 static int ubus_version(struct list_head *list, struct json_object *top, char *ubus_obj_name, char *xpath) {
@@ -151,7 +96,7 @@ cleanup:
 
 static int ubus_memory_status(struct list_head *list, struct json_object *top, char *ubus_obj_name, char *xpath) {
     struct json_object *jobj_memory = NULL, *jobj_total = NULL, *jobj_used = NULL;
-    struct value_node *list_value = NULL;
+    sr_value_node_t *list_value = NULL;
     uint8_t result_value = 0;
     int rc = SR_ERR_OK;
 
@@ -284,67 +229,9 @@ cleanup:
     return rc;
 }
 
-static size_t list_size(struct list_head *list) {
-    size_t current_size = 0;
-    struct value_node *vn;
-
-    list_for_each_entry(vn, list, head) {
-        current_size += 1;
-    }
-
-    return current_size;
-}
-
-int sr_dup_val_data(sr_val_t *dest, const sr_val_t *source)
-{
-    int rc = SR_ERR_OK;
-
-    switch (source->type) {
-        case SR_BINARY_T:
-            rc = sr_val_set_str_data(dest, source->type, source->data.binary_val);
-            break;
-        case SR_BITS_T:
-            rc = sr_val_set_str_data(dest, source->type, source->data.bits_val);
-            break;
-        case SR_ENUM_T:
-            rc = sr_val_set_str_data(dest, source->type, source->data.enum_val);
-            break;
-        case SR_IDENTITYREF_T:
-            rc = sr_val_set_str_data(dest, source->type, source->data.identityref_val);
-            break;
-        case SR_INSTANCEID_T:
-            rc = sr_val_set_str_data(dest, source->type, source->data.instanceid_val);
-            break;
-        case SR_STRING_T:
-            rc = sr_val_set_str_data(dest, source->type, source->data.string_val);
-            break;
-        case SR_BOOL_T:
-        case SR_DECIMAL64_T:
-        case SR_INT8_T:
-        case SR_INT16_T:
-        case SR_INT32_T:
-        case SR_INT64_T:
-        case SR_UINT8_T:
-        case SR_UINT16_T:
-        case SR_UINT32_T:
-        case SR_UINT64_T:
-        case SR_TREE_ITERATOR_T:
-            dest->data = source->data;
-            dest->type = source->type;
-            break;
-        default:
-            dest->type = source->type;
-            break;
-    }
-
-    sr_val_set_xpath(dest, source->xpath);
-    return rc;
-}
-
 static int sr_oper_data_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx) {
     int rc = SR_ERR_OK;
     ubus_data_t ubus_ctx;
-    struct value_node *vn, *q;
     struct list_head list = LIST_HEAD_INIT(list);
 
     rc = get_ubus_data(&ubus_ctx);
@@ -385,26 +272,11 @@ static int sr_oper_data_cb(const char *xpath, sr_val_t **values, size_t *values_
     rc = ubus_uint8_to_sr(&list, jobj_system, "cpu_per", XPATH_CPU);
     CHECK_RET_MSG(rc, cleanup, "ubus_memory_status: failed");
 
-    size_t cnt = list_size(&list);
-    size_t j = 0;
-    rc = sr_new_values(cnt, values);
-    CHECK_RET_MSG(rc, cleanup, "sr_new_values: failed");
-
-    list_for_each_entry_safe(vn, q, &list, head) {
-        rc = sr_dup_val_data(&(*values)[j], &vn->value);
-        CHECK_RET(rc, cleanup, "Couldn't copy value: %s", sr_strerror(rc));
-        list_del(&vn->head);
-        free(vn);
-        j++;
-    }
-
-    *values_cnt = cnt;
+    rc = sr_value_node_copy(&list, values, values_cnt);
+    CHECK_RET_MSG(rc, cleanup, "sr_value_node_copy: failed");
 
 cleanup:
-    list_for_each_entry_safe(vn, q, &list, head) {
-        list_del(&vn->head);
-        free(vn);
-    }
+    sr_value_node_free(&list);
     list_del(&list);
     clear_ubus_data(&ubus_ctx);
     return rc;

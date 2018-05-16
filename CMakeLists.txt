@@ -26,13 +26,21 @@ target_link_libraries(${CMAKE_PROJECT_NAME} ${SYSREPO_LIBRARIES})
 include_directories(${SYSREPO_INCLUDE_DIRS})
 
 # dependencies - libubox
-FIND_PACKAGE(LIBUBOX REQUIRED)
-INCLUDE_DIRECTORIES(${LIBUBOX_INCLUDE_DIR})
-TARGET_LINK_LIBRARIES(${CMAKE_PROJECT_NAME} ${LIBUBOX_LIBRARIES})
+find_package(LIBUBOX REQUIRED)
+include_directories(${LIBUBOX_INCLUDE_DIR})
+target_link_libraries(${CMAKE_PROJECT_NAME} ${LIBUBOX_LIBRARIES})
 
 # dependencies - libubus
-FIND_PACKAGE(LIBUBUS REQUIRED)
-INCLUDE_DIRECTORIES(${LIBUBUS_INCLUDE_DIR})
-TARGET_LINK_LIBRARIES(${CMAKE_PROJECT_NAME} ${LIBUBUS_LIBRARIES})
+find_package(LIBUBUS REQUIRED)
+include_directories(${LIBUBUS_INCLUDE_DIR})
+target_link_libraries(${CMAKE_PROJECT_NAME} ${LIBUBUS_LIBRARIES})
 
-TARGET_LINK_LIBRARIES(${CMAKE_PROJECT_NAME} json-c)
+# dependencies - sr_uci
+find_package(SR_UCI REQUIRED)
+INCLUDE_DIRECTORIES(${SR_UCI_INCLUDE_DIR})
+target_link_libraries(${CMAKE_PROJECT_NAME} ${SR_UCI_LIBRARIES})
+
+# dependencies - json-c
+find_package(JSON-C REQUIRED)
+include_directories(${JSON-C_INCLUDE_DIR})
+target_link_libraries(${CMAKE_PROJECT_NAME} json-c)
