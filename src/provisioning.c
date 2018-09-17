@@ -6,6 +6,7 @@
 #include <json-c/json.h>
 
 #include "provisioning.h"
+#include "version.h"
 #include <sr_uci.h>
 
 #define XPATH_BASE "/terastream-provisioning:hgw-diagnostics"
