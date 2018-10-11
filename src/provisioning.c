@@ -230,7 +230,13 @@ cleanup:
     return rc;
 }
 
-static int sr_oper_data_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx) {
+static int
+#ifdef SYSREPO_LESS_0_7_5
+sr_oper_data_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
+#else
+sr_oper_data_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, void *private_ctx)
+#endif
+{
     int rc = SR_ERR_OK;
     ubus_data_t ubus_ctx;
     struct list_head list = LIST_HEAD_INIT(list);
