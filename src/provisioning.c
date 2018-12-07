@@ -231,9 +231,9 @@ cleanup:
 }
 
 static int
-#ifdef SYSREPO_LESS_0_7_5
+#if defined(SYSREPO_LESS_0_7_5)
 sr_oper_data_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, void *private_ctx)
-#elifdef SYSREPO_LESS_0_7_7
+#elif defined(SYSREPO_LESS_0_7_7)
 sr_oper_data_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, void *private_ctx)
 #else
 sr_oper_data_cb(const char *xpath, sr_val_t **values, size_t *values_cnt, uint64_t request_id, const char *original_xpath, void *private_ctx)
