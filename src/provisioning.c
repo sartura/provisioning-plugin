@@ -309,7 +309,6 @@ static int sr_oper_data_cb(sr_session_ctx_t *session, const char *module_name,
 
   for (size_t i = 0; i < values_cnt; i++) {
     value_string = sr_val_to_str(&values[i]);
-    INF("xpath: %s, value: %s", values[i].xpath, value_string);
     lyd_new_path(*parent, NULL, values[i].xpath, value_string, 0, 0);
     free(value_string);
     value_string = NULL;
