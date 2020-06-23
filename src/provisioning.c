@@ -1,416 +1,388 @@
-#include <stdio.h>
+#include <inttypes.h>
+#include <unistd.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
 
 #include <json-c/json.h>
-#include <libubox/blobmsg.h>
-#include <libubox/blobmsg_json.h>
-#include <libubus.h>
 
-#include "provisioning.h"
-#include "version.h"
-#include <sr_uci.h>
+#include <sysrepo.h>
+#include <sysrepo/xpath.h>
 
-#define XPATH_BASE "/terastream-provisioning:hgw-diagnostics"
-#define XPATH_VERSION "/terastream-provisioning:hgw-diagnostics/version"
-#define XPATH_MEMORY "/terastream-provisioning:hgw-diagnostics/memory-status"
-#define XPATH_DISK "/terastream-provisioning:hgw-diagnostics/disk-usage"
-#define XPATH_CPU "/terastream-provisioning:hgw-diagnostics/cpu-usage"
-#define XPATH_NAME "/terastream-provisioning:hgw-diagnostics/name"
-#define XPATH_HARDWARE "/terastream-provisioning:hgw-diagnostics/hardware"
-#define XPATH_MODEL "/terastream-provisioning:hgw-diagnostics/model"
-#define XPATH_BOARDID "/terastream-provisioning:hgw-diagnostics/board-id"
-#define XPATH_RUNNING_BANK                                                     \
-  "/terastream-provisioning:hgw-diagnostics/version-running-bank"
-#define XPATH_OTHER_BANK                                                       \
-  "/terastream-provisioning:hgw-diagnostics/version-other-bank"
+#include <srpo_uci.h>
+#include <srpo_ubus.h>
 
-const char *yang_model = "terastream-provisioning";
-const char *PLUGIN_NAME = "sysrepo-plugin-dt-provisioning";
+#include "transform_data.h"
+#include "utils/memory.h"
 
-void sr_plugin_cleanup_cb(sr_session_ctx_t *session, void *private_ctx) {
-  INF("Plugin cleanup called, private_ctx is %s available.",
-      private_ctx ? "" : "not");
-  if (!private_ctx)
-    return;
+#define ARRAY_SIZE(X) (sizeof((X)) / sizeof((X)[0]))
 
-  ctx_t *ctx = private_ctx;
-  if (NULL == ctx) {
-    return;
-  }
-  if (NULL != ctx->sub) {
-    sr_unsubscribe(ctx->sub);
-  }
-  free(ctx);
-  ctx = NULL;
+#define PROVISIONING_YANG_MODEL "terastream-provisioning"
+#define PROVISIONING_XPATH_BASE "/" PROVISIONING_YANG_MODEL ":hgw-diagnostics"
 
-  DBG_MSG("Plugin cleaned-up successfully");
+typedef const char *(*transform_data_cb)(json_object *, const char *, const char *);
+
+typedef struct {
+	const char *xpath;
+	const char *parent_name;
+	const char *name;
+        transform_data_cb transform_data;
+} provisioning_ubus_json_transform_table_t;
+
+int provisioning_plugin_init_cb(sr_session_ctx_t *session, void **private_data);
+void provisioning_plugin_cleanup_cb(sr_session_ctx_t *session, void *private_data);
+
+static int provisioning_state_data_cb(sr_session_ctx_t *session, const char *module_name,
+				      const char *path, const char *request_xpath,
+				      uint32_t request_id, struct lyd_node **parent,
+				      void *private_data);
+
+static void provisioning_ubus_info_cb(const char *ubus_json, srpo_ubus_result_values_t *values);
+static void provisioning_ubus_board_cb(const char *ubus_json, srpo_ubus_result_values_t *values);
+static void provisioning_ubus_fs_cb(const char *ubus_json, srpo_ubus_result_values_t *values);
+static void provisioning_ubus_memory_cb(const char *ubus_json, srpo_ubus_result_values_t *values);
+static int store_ubus_values_to_datastore(sr_session_ctx_t *session, const char *request_xpath,
+					  srpo_ubus_result_values_t *values, struct lyd_node **parent);
+
+provisioning_ubus_json_transform_table_t provisioning_ubus_board_map[] = {
+	{PROVISIONING_XPATH_BASE "/version", "revision", "release", transform_data_subkey_ubus_transform},
+};
+provisioning_ubus_json_transform_table_t provisioning_ubus_info_map[] = {
+	{PROVISIONING_XPATH_BASE "/name",          "system", "name",     transform_data_subkey_ubus_transform},
+	{PROVISIONING_XPATH_BASE "/board-id",      "system", "boardid",  transform_data_subkey_ubus_transform},
+	{PROVISIONING_XPATH_BASE "/hardware",      "system", "hardware", transform_data_subkey_ubus_transform},
+	{PROVISIONING_XPATH_BASE "/model",         "system", "model",    transform_data_subkey_ubus_transform},
+	{PROVISIONING_XPATH_BASE "/cpu-usage",     "system", "cpu_per",  transform_data_subkey_ubus_transform},
+	{PROVISIONING_XPATH_BASE "/memory-status", NULL,     "memoryKB", transform_data_memory_ubus_transform},
+};
+provisioning_ubus_json_transform_table_t provisioning_ubus_fs_map[] = {
+	{PROVISIONING_XPATH_BASE "/disk-usage", "use_pre", "filesystem", transform_data_disk_ubus_transform},
+};
+provisioning_ubus_json_transform_table_t provisioning_ubus_memory_map[] = {
+	{PROVISIONING_XPATH_BASE "/version-other-bank",   NULL, "previous_bank_firmware", transform_data_key_ubus_transform},
+	{PROVISIONING_XPATH_BASE "/version-running-bank", NULL, "current_bank_firmware",  transform_data_key_ubus_transform},
+};
+
+static struct {
+	const char *module;
+	const char *method;
+	srpo_ubus_transform_data_cb transform_data;
+} provisioning_provider_table[] = {
+	{"system",	  "board",	 provisioning_ubus_board_cb},
+	{"router.system", "info",	 provisioning_ubus_info_cb},
+	{"router.system", "fs",		 provisioning_ubus_fs_cb},
+	{"router.system", "memory_bank", provisioning_ubus_memory_cb},
+};
+
+int provisioning_plugin_init_cb(sr_session_ctx_t *session, void **private_data)
+{
+	int error = 0;
+	sr_conn_ctx_t *connection = NULL;
+	sr_session_ctx_t *startup_session = NULL;
+	sr_subscription_ctx_t *subscription = NULL;
+
+	*private_data = NULL;
+
+	error = srpo_uci_init();
+	if (error) {
+		SRP_LOG_ERR("srpo_uci_init error (%d): %s", error, srpo_uci_error_description_get(error));
+		goto error_out;
+	}
+
+	SRP_LOG_INFMSG("start session to startup datastore");
+
+	connection = sr_session_get_connection(session);
+	error = sr_session_start(connection, SR_DS_RUNNING, &startup_session);
+	if (error) {
+		SRP_LOG_ERR("sr_session_start error (%d): %s", error, sr_strerror(error));
+		goto error_out;
+	}
+
+	*private_data = startup_session;
+
+	error = sr_oper_get_items_subscribe(session, PROVISIONING_YANG_MODEL, PROVISIONING_XPATH_BASE,
+			                    provisioning_state_data_cb, *private_data,
+			                    SR_SUBSCR_DEFAULT, &subscription);
+	if (error) {
+		SRP_LOG_ERR("sr_oper_get_items_subscribe error (%d): %s", error, sr_strerror(error));
+		goto error_out;
+	}
+
+	SRP_LOG_INFMSG("plugin init done");
+
+	goto out;
+
+error_out:
+	sr_unsubscribe(subscription);
+
+out:
+
+	return error ? SR_ERR_CALLBACK_FAILED : SR_ERR_OK;
 }
 
-static int ubus_version(struct list_head *list, struct json_object *top,
-                        char *ubus_obj_name, char *xpath) {
-  struct json_object *jobj_release = NULL;
-  int rc = SR_ERR_OK;
+void provisioning_plugin_cleanup_cb(sr_session_ctx_t *session, void *private_data)
+{
+	srpo_uci_cleanup();
 
-  json_object_object_get_ex(top, "release", &jobj_release);
-  CHECK_NULL_MSG(jobj_release, &rc, cleanup,
-                 "json_object_object_get_ex: failed");
+	sr_session_ctx_t *startup_session = (sr_session_ctx_t *) private_data;
 
-  rc = ubus_string_to_sr(list, jobj_release, ubus_obj_name, xpath);
-  CHECK_RET_MSG(rc, cleanup, "ubus_uint8_to_sr: failed");
+	if (startup_session) {
+		sr_session_stop(startup_session);
+	}
+
+	SRP_LOG_INFMSG("plugin cleanup finished");
+}
+
+static int provisioning_state_data_cb(sr_session_ctx_t *session, const char *module_name,
+				  const char *path, const char *request_xpath,
+				  uint32_t request_id, struct lyd_node **parent,
+				  void *private_data)
+{
+	int error = SRPO_UBUS_ERR_OK;
+	srpo_ubus_result_values_t *values = NULL;
+	srpo_ubus_call_data_t ubus_call_data = {
+		.lookup_path = NULL, .method = NULL, .transform_data_cb = NULL,
+		.timeout = 0, .json_call_arguments = NULL
+	};
+
+	if (strcmp(path, PROVISIONING_XPATH_BASE) != 0 && strcmp(path, "*") != 0)
+		return SR_ERR_OK;
+
+	for (size_t j = 0; j < ARRAY_SIZE(provisioning_provider_table); j++) {
+		srpo_ubus_init_result_values(&values);
+
+		ubus_call_data.lookup_path = provisioning_provider_table[j].module;
+		ubus_call_data.method = provisioning_provider_table[j].method;
+		ubus_call_data.transform_data_cb = provisioning_provider_table[j].transform_data;
+
+		error = srpo_ubus_call(values, &ubus_call_data);
+		if (error != SRPO_UBUS_ERR_OK) {
+			SRP_LOG_ERR("srpo_ubus_call error (%d): %s", error, srpo_ubus_error_description_get(error));
+			goto out;
+		}
+
+		error = store_ubus_values_to_datastore(session, request_xpath, values, parent);
+		// TODO fix error handling here
+		if (error) {
+			SRP_LOG_ERR("store_ubus_values_to_datastore error (%d)", error);
+			goto out;
+		}
+
+		// json_object_put(json_obj);
+		srpo_ubus_free_result_values(values);
+		values = NULL;
+	}
+
+out:
+	if (values) {
+		srpo_ubus_free_result_values(values);
+	}
+
+	return error ? SR_ERR_CALLBACK_FAILED : SR_ERR_OK;
+}
+
+static void provisioning_ubus_board_cb(const char *ubus_json, srpo_ubus_result_values_t *values)
+{
+	json_object *result = NULL;
+	const char *string = NULL;
+	srpo_ubus_error_e error = SRPO_UBUS_ERR_OK;
+
+	result = json_tokener_parse(ubus_json);
+
+	for (size_t i = 0; i < ARRAY_SIZE(provisioning_ubus_board_map); i++) {
+		if (!provisioning_ubus_board_map[i].transform_data)
+			goto cleanup;
+
+		string = (provisioning_ubus_info_map[i].transform_data)(result,
+				provisioning_ubus_info_map[i].parent_name,
+				provisioning_ubus_info_map[i].name);
+		if (!string)
+			goto cleanup;
+
+		error = srpo_ubus_result_values_add(values, string, strlen(string),
+				provisioning_ubus_board_map[i].xpath, strlen(provisioning_ubus_board_map[i].xpath),
+				provisioning_ubus_board_map[i].name, strlen(provisioning_ubus_board_map[i].name));
+		if (error != SRPO_UBUS_ERR_OK) {
+			goto cleanup;
+		}
+	}
 
 cleanup:
-  return rc;
+
+	json_object_put(result);
+	return;
 }
 
-static int ubus_disk_usage(struct list_head *list, struct json_object *top,
-                           char *ubus_obj_name, char *xpath) {
-  struct json_object *jobj_filesystem = NULL;
-  int array_length = 0;
-  int rc = SR_ERR_OK;
+static void provisioning_ubus_info_cb(const char *ubus_json, srpo_ubus_result_values_t *values)
+{
+	json_object *result = NULL;
+	const char *string = NULL;
+	srpo_ubus_error_e error = SRPO_UBUS_ERR_OK;
 
-  json_object_object_get_ex(top, "filesystem", &jobj_filesystem);
-  CHECK_NULL_MSG(jobj_filesystem, &rc, cleanup,
-                 "json_object_object_get_ex: failed");
+	result = json_tokener_parse(ubus_json);
 
-  if (json_type_array != json_object_get_type(jobj_filesystem)) {
-    DBG_MSG("json not array type");
-    goto cleanup;
-  }
+	for (size_t i = 0; i < ARRAY_SIZE(provisioning_ubus_info_map); i++) {
+		if (!provisioning_ubus_info_map[i].transform_data)
+			goto cleanup;
 
-  array_length = json_object_array_length(jobj_filesystem);
-  if (array_length <= 0) {
-    DBG_MSG("no elements in filesystem json array");
-    goto cleanup;
-  }
+		string = (provisioning_ubus_info_map[i].transform_data)(result,
+									provisioning_ubus_info_map[i].parent_name,
+									provisioning_ubus_info_map[i].name);
+		if (!string)
+			goto cleanup;
 
-  for (int i = 0; i < array_length; i++) {
-    struct json_object *jobj_element = NULL, *jobj_mounted = NULL;
-    jobj_element = json_object_array_get_idx(jobj_filesystem, i);
-    CHECK_NULL_MSG(jobj_element, &rc, cleanup,
-                   "json_object_array_get_idx: failed");
-
-    json_object_object_get_ex(jobj_element, "mounted_on", &jobj_mounted);
-    CHECK_NULL_MSG(jobj_mounted, &rc, cleanup,
-                   "json_object_object_get_ex: failed");
-
-    // check that we are looking at the right partition
-    if (strcmp(json_object_get_string(jobj_mounted), "/") == 0) {
-      rc = ubus_uint8_to_sr(list, jobj_element, ubus_obj_name, xpath);
-      CHECK_RET_MSG(rc, cleanup, "ubus_uint8_to_sr: failed");
-      break;
-    }
-  }
+		error = srpo_ubus_result_values_add(values, string, strlen(string),
+						    provisioning_ubus_info_map[i].xpath, strlen(provisioning_ubus_info_map[i].xpath),
+						    provisioning_ubus_info_map[i].name, strlen(provisioning_ubus_info_map[i].name));
+		if (error != SRPO_UBUS_ERR_OK) {
+			goto cleanup;
+		}
+	}
 
 cleanup:
-  return rc;
+
+	json_object_put(result);
+	return;
 }
 
-static int ubus_memory_status(struct list_head *list, struct json_object *top,
-                              char *ubus_obj_name, char *xpath) {
-  struct json_object *jobj_memory = NULL, *jobj_total = NULL, *jobj_used = NULL;
-  sr_value_node_t *list_value = NULL;
-  uint8_t result_value = 0;
-  int rc = SR_ERR_OK;
+static void provisioning_ubus_fs_cb(const char *ubus_json, srpo_ubus_result_values_t *values)
+{
+	json_object *result = NULL;
+	const char *string = NULL;
+	srpo_ubus_error_e error = SRPO_UBUS_ERR_OK;
 
-  json_object_object_get_ex(top, ubus_obj_name, &jobj_memory);
-  CHECK_NULL_MSG(jobj_memory, &rc, cleanup,
-                 "json_object_object_get_ex: failed");
-  json_object_object_get_ex(jobj_memory, "total", &jobj_total);
-  CHECK_NULL_MSG(jobj_total, &rc, cleanup, "json_object_object_get_ex: failed");
-  json_object_object_get_ex(jobj_memory, "used", &jobj_used);
-  CHECK_NULL_MSG(jobj_used, &rc, cleanup, "json_object_object_get_ex: failed");
+	result = json_tokener_parse(ubus_json);
 
-  result_value = (uint8_t)((100 * json_object_get_int(jobj_used)) /
-                           json_object_get_int(jobj_total));
+	for (size_t i = 0; i < ARRAY_SIZE(provisioning_ubus_fs_map); i++) {
+		if (!provisioning_ubus_fs_map[i].transform_data)
+			goto cleanup;
 
-  list_value = calloc(1, sizeof *list_value);
-  CHECK_NULL_MSG(list_value, &rc, cleanup, "calloc: failed");
+		string = (provisioning_ubus_fs_map[i].transform_data)(result,
+								      provisioning_ubus_fs_map[i].parent_name,
+								      provisioning_ubus_fs_map[i].name);
+		if (!string)
+			goto cleanup;
 
-  list_value->value.xpath = xpath;
-  list_value->value.type = SR_UINT8_T;
-  list_value->value.data.uint8_val = result_value;
-  list_add(&list_value->head, list);
-
-  return rc;
-cleanup:
-  if (NULL != list_value) {
-    free(list_value);
-  }
-  return rc;
-}
-
-void ubus_cb(struct ubus_request *req, int type, struct blob_attr *msg) {
-  int rc = SR_ERR_OK;
-  ubus_data_t *ctx = req->priv;
-  struct json_object *r = NULL;
-  char *json_result = NULL;
-
-  CHECK_NULL_MSG(msg, &rc, cleanup, "blob_attr is empty");
-
-  json_result = blobmsg_format_json(msg, true);
-  CHECK_NULL_MSG(json_result, &rc, cleanup, "blobmsg_format_json: failed");
-
-  r = json_tokener_parse(json_result);
-  CHECK_NULL_MSG(r, &rc, cleanup, "json_tokener_parse: failed");
-
-  ctx->tmp = r;
+		error = srpo_ubus_result_values_add(values, string, strlen(string),
+						    provisioning_ubus_fs_map[i].xpath, strlen(provisioning_ubus_fs_map[i].xpath),
+						    provisioning_ubus_fs_map[i].name, strlen(provisioning_ubus_fs_map[i].name));
+		if (error != SRPO_UBUS_ERR_OK) {
+			goto cleanup;
+		}
+	}
 
 cleanup:
-  if (NULL != json_result) {
-    free(json_result);
-  }
-  return;
+
+	json_object_put(result);
+	return;
 }
 
-static void clear_ubus_data(ubus_data_t *ctx) {
-  /* clear data out if it exists */
-  if (ctx->fs) {
-    json_object_put(ctx->fs);
-    ctx->fs = NULL;
-  }
-  if (ctx->info) {
-    json_object_put(ctx->info);
-    ctx->info = NULL;
-  }
-  if (ctx->memory_bank) {
-    json_object_put(ctx->memory_bank);
-    ctx->memory_bank = NULL;
-  }
-  if (ctx->board) {
-    json_object_put(ctx->board);
-    ctx->board = NULL;
-  }
-}
+static void provisioning_ubus_memory_cb(const char *ubus_json, srpo_ubus_result_values_t *values)
+{
+        json_object *result = NULL;
+	const char *string = NULL;
+	srpo_ubus_error_e error = SRPO_UBUS_ERR_OK;
 
-static int get_ubus_data(ubus_data_t *ctx) {
-  int rc = SR_ERR_OK;
-  uint32_t id = 0;
-  struct blob_buf buf = {0};
-  int u_rc = UBUS_STATUS_OK;
+	result = json_tokener_parse(ubus_json);
 
-  struct ubus_context *u_ctx = ubus_connect(NULL);
-  CHECK_NULL_MSG(u_ctx, &rc, cleanup, "could not connect to ubus");
+	for (size_t i = 0; i < ARRAY_SIZE(provisioning_ubus_memory_map); i++) {
+		if (!provisioning_ubus_memory_map[i].transform_data)
+			goto cleanup;
 
-  /* ubus call router.system fs */
-  blob_buf_init(&buf, 0);
-  u_rc = ubus_lookup_id(u_ctx, "router.system", &id);
-  UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no object router.system",
-                 u_rc);
+		string = (provisioning_ubus_memory_map[i].transform_data)(result,
+									  provisioning_ubus_memory_map[i].parent_name,
+									  provisioning_ubus_memory_map[i].name);
+		if (!string)
+			goto cleanup;
 
-  u_rc = ubus_invoke(u_ctx, id, "fs", buf.head, ubus_cb, ctx, 0);
-  UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no object fs", u_rc);
-
-  ctx->fs = ctx->tmp;
-  blob_buf_free(&buf);
-
-  /* ubus call router.system info */
-  blob_buf_init(&buf, 0);
-  u_rc = ubus_lookup_id(u_ctx, "router.system", &id);
-  UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no object router.system",
-                 u_rc);
-
-  u_rc = ubus_invoke(u_ctx, id, "info", buf.head, ubus_cb, ctx, 0);
-  UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no object info", u_rc);
-
-  ctx->info = ctx->tmp;
-  blob_buf_free(&buf);
-
-  /* ubus call router.system memory_bank */
-  blob_buf_init(&buf, 0);
-  u_rc = ubus_lookup_id(u_ctx, "router.system", &id);
-  UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no object router.system",
-                 u_rc);
-
-  u_rc = ubus_invoke(u_ctx, id, "memory_bank", buf.head, ubus_cb, ctx, 0);
-  UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no object memory_bank", u_rc);
-
-  ctx->memory_bank = ctx->tmp;
-  blob_buf_free(&buf);
-
-  /* ubus call system board */
-  blob_buf_init(&buf, 0);
-  u_rc = ubus_lookup_id(u_ctx, "system", &id);
-  UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no object system", u_rc);
-
-  u_rc = ubus_invoke(u_ctx, id, "board", buf.head, ubus_cb, ctx, 0);
-  UBUS_CHECK_RET(u_rc, &rc, cleanup, "ubus [%d]: no object board", u_rc);
-
-  ctx->board = ctx->tmp;
-  blob_buf_free(&buf);
+		error = srpo_ubus_result_values_add(values, string, strlen(string),
+						    provisioning_ubus_memory_map[i].xpath, strlen(provisioning_ubus_memory_map[i].xpath),
+						    provisioning_ubus_memory_map[i].name, strlen(provisioning_ubus_memory_map[i].name));
+		if (error != SRPO_UBUS_ERR_OK) {
+			SRP_LOG_ERR("srpo_ubus_result_values_add error (%d): %s", error, srpo_ubus_error_description_get(error));
+			goto cleanup;
+		}
+	}
 
 cleanup:
-  if (NULL != u_ctx) {
-    ubus_free(u_ctx);
-    blob_buf_free(&buf);
-  }
-  return rc;
+
+	json_object_put(result);
+	return;
 }
 
-static int sr_oper_data_cb(sr_session_ctx_t *session, const char *module_name,
-                           const char *path, const char *request_xpath,
-                           uint32_t request_id, struct lyd_node **parent,
-                           void *private_data) {
-  int rc = SR_ERR_OK;
-  ubus_data_t ubus_ctx = {0};
-  struct list_head list = LIST_HEAD_INIT(list);
-  sr_val_t *values = NULL;
-  size_t values_cnt = 0;
-  char *value_string = NULL;
-  const struct ly_ctx *ly_ctx = NULL;
+static int store_ubus_values_to_datastore(sr_session_ctx_t *session, const char *request_xpath, srpo_ubus_result_values_t *values, struct lyd_node **parent)
+{
+	const struct ly_ctx *ly_ctx = NULL;
+	if (*parent == NULL) {
+		ly_ctx = sr_get_context(sr_session_get_connection(session));
+		if (ly_ctx == NULL) {
+			return -1;
+		}
+		*parent = lyd_new_path(NULL, ly_ctx, request_xpath, NULL, 0, 0);
+	}
 
-  rc = get_ubus_data(&ubus_ctx);
-  CHECK_RET_MSG(rc, cleanup, "failed to get ubus data");
+	for (size_t i = 0; i < values->num_values; i++) {
+		lyd_new_path(*parent, NULL, values->values[i].xpath, values->values[i].value, 0, 0);
+	}
 
-  rc = ubus_string_to_sr(&list, ubus_ctx.memory_bank, "previous_bank_firmware",
-                         XPATH_OTHER_BANK);
-  CHECK_RET_MSG(rc, cleanup, "ubus_string_to_str: failed");
-
-  rc = ubus_string_to_sr(&list, ubus_ctx.memory_bank, "current_bank_firmware",
-                         XPATH_RUNNING_BANK);
-  CHECK_RET_MSG(rc, cleanup, "ubus_string_to_str: failed");
-
-  rc = ubus_version(&list, ubus_ctx.board, "revision", XPATH_VERSION);
-  CHECK_RET_MSG(rc, cleanup, "ubus_version: failed");
-
-  rc = ubus_disk_usage(&list, ubus_ctx.fs, "use_pre", XPATH_DISK);
-  CHECK_RET_MSG(rc, cleanup, "ubus_disk_usage: failed");
-
-  rc = ubus_memory_status(&list, ubus_ctx.info, "memoryKB", XPATH_MEMORY);
-  CHECK_RET_MSG(rc, cleanup, "ubus_memory_status: failed");
-
-  struct json_object *jobj_system = NULL;
-  json_object_object_get_ex(ubus_ctx.info, "system", &jobj_system);
-  CHECK_NULL_MSG(jobj_system, &rc, cleanup,
-                 "json_object_object_get_ex: failed");
-
-  rc = ubus_string_to_sr(&list, jobj_system, "name", XPATH_NAME);
-  CHECK_RET_MSG(rc, cleanup, "ubus_string_to_str: failed");
-
-  rc = ubus_string_to_sr(&list, jobj_system, "boardid", XPATH_BOARDID);
-  CHECK_RET_MSG(rc, cleanup, "ubus_string_to_str: failed");
-
-  rc = ubus_string_to_sr(&list, jobj_system, "hardware", XPATH_HARDWARE);
-  CHECK_RET_MSG(rc, cleanup, "ubus_string_to_str: failed");
-
-  rc = ubus_string_to_sr(&list, jobj_system, "model", XPATH_MODEL);
-  CHECK_RET_MSG(rc, cleanup, "ubus_string_to_str: failed");
-
-  rc = ubus_uint8_to_sr(&list, jobj_system, "cpu_per", XPATH_CPU);
-  CHECK_RET_MSG(rc, cleanup, "ubus_memory_status: failed");
-
-  rc = sr_value_node_copy(&list, &values, &values_cnt);
-  CHECK_RET_MSG(rc, cleanup, "sr_value_node_copy: failed");
-
-  if (*parent == NULL) {
-    ly_ctx = sr_get_context(sr_session_get_connection(session));
-    CHECK_NULL_MSG(ly_ctx, &rc, cleanup,
-                   "sr_get_context error: libyang context is NULL");
-    *parent = lyd_new_path(NULL, ly_ctx, request_xpath, NULL, 0, 0);
-  }
-
-  for (size_t i = 0; i < values_cnt; i++) {
-    value_string = sr_val_to_str(&values[i]);
-    lyd_new_path(*parent, NULL, values[i].xpath, value_string, 0, 0);
-    free(value_string);
-    value_string = NULL;
-  }
-
-cleanup:
-  sr_value_node_free(&list);
-  list_del(&list);
-  clear_ubus_data(&ubus_ctx);
-  if (values != NULL) {
-    sr_free_values(values, values_cnt);
-    values = NULL;
-    values_cnt = 0;
-  }
-  return rc;
+	return 0;
 }
 
-int sr_plugin_init_cb(sr_session_ctx_t *session, void **private_ctx) {
-  /* sr_subscription_ctx_t *subscription = NULL; */
-  int rc = SR_ERR_OK;
-  INF("%s for %s", __func__, PLUGIN_NAME);
 
-  ctx_t *ctx = calloc(1, sizeof(*ctx));
-  if (!ctx) {
-    fprintf(stderr, "Can't allocate plugin context\n");
-    rc = SR_ERR_NOMEM;
-    goto cleanup;
-  }
-  ctx->sub = NULL;
-  ctx->sess = session;
-  ctx->yang_model = yang_model;
-  *private_ctx = ctx;
-
-  /* Operational data handling. */
-  INF_MSG("Subscribing to version");
-  rc = sr_oper_get_items_subscribe(ctx->sess, yang_model, XPATH_BASE,
-                                   sr_oper_data_cb, *private_ctx,
-                                   SR_SUBSCR_DEFAULT, &ctx->sub);
-  CHECK_RET(rc, cleanup, "Error by sr_dp_get_items_subscribe: %s",
-            sr_strerror(rc));
-
-  DBG_MSG("Plugin initialized successfully");
-  return rc;
-
-cleanup:
-  ERR("Plugin initialization failed: %s", sr_strerror(rc));
-  if (NULL != ctx->sub) {
-    sr_unsubscribe(ctx->sub);
-    ctx->sub = NULL;
-  }
-  return rc;
-}
 
 #ifndef PLUGIN
-
 #include <signal.h>
-#include <stdlib.h>
-#include <unistd.h>
 
 volatile int exit_application = 0;
 
-static void sigint_handler(__attribute__((unused)) int signum) {
-  INF_MSG("Sigint called, exiting...");
-  exit_application = 1;
+static void sigint_handler(__attribute__((unused)) int signum);
+
+int main()
+{
+	int error = SR_ERR_OK;
+	sr_conn_ctx_t *connection = NULL;
+	sr_session_ctx_t *session = NULL;
+	void *private_data = NULL;
+
+	sr_log_stderr(SR_LL_DBG);
+
+	/* connect to sysrepo */
+	error = sr_connect(SR_CONN_DEFAULT, &connection);
+	if (error) {
+		SRP_LOG_ERR("sr_connect error (%d): %s", error, sr_strerror(error));
+		goto out;
+	}
+
+	error = sr_session_start(connection, SR_DS_RUNNING, &session);
+	if (error) {
+		SRP_LOG_ERR("sr_session_start error (%d): %s", error, sr_strerror(error));
+		goto out;
+	}
+
+	error = provisioning_plugin_init_cb(session, &private_data);
+	if (error) {
+		SRP_LOG_ERRMSG("provisioning_plugin_init_cb error");
+		goto out;
+	}
+
+	/* loop until ctrl-c is pressed / SIGINT is received */
+	signal(SIGINT, sigint_handler);
+	signal(SIGPIPE, SIG_IGN);
+	while (!exit_application) {
+		sleep(1);
+	}
+
+out:
+	provisioning_plugin_cleanup_cb(session, private_data);
+	sr_disconnect(connection);
+
+	return error ? -1 : 0;
 }
 
-int main() {
-  INF_MSG("Plugin application mode initialized");
-
-  ENABLE_LOGGING(SR_LL_DBG);
-
-  /* connect to sysrepo */
-  sr_conn_ctx_t *connection = NULL;
-  INF_MSG("Connecting to sysrepo ...");
-  int rc = sr_connect(SR_CONN_DEFAULT, &connection);
-  CHECK_RET(rc, cleanup, "Error by sr_connect: %s", sr_strerror(rc));
-
-  /* start session */
-  sr_session_ctx_t *session = NULL;
-  INF_MSG("Starting session ...");
-  rc = sr_session_start(connection, SR_DS_RUNNING, &session);
-  CHECK_RET(rc, cleanup, "Error by sr_session_start: %s", sr_strerror(rc));
-
-  void *private_ctx = NULL;
-  INF_MSG("Initializing plugin ...");
-  rc = sr_plugin_init_cb(session, &private_ctx);
-  CHECK_RET(rc, cleanup, "Error by sr_plugin_init_cb: %s", sr_strerror(rc));
-
-  /* loop until ctrl-c is pressed / SIGINT is received */
-  signal(SIGINT, sigint_handler);
-  signal(SIGPIPE, SIG_IGN);
-  while (!exit_application) {
-    sleep(1); /* or do some more useful work... */
-  }
-
-cleanup:
-  sr_plugin_cleanup_cb(session, private_ctx);
-  if (NULL != session) {
-    sr_session_stop(session);
-  }
-  if (NULL != connection) {
-    sr_disconnect(connection);
-  }
+static void sigint_handler(__attribute__((unused)) int signum)
+{
+	SRP_LOG_INFMSG("Sigint called, exiting...");
+	exit_application = 1;
 }
-#endif /* PLUGIN */
+
+#endif

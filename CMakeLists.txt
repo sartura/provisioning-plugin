@@ -10,6 +10,7 @@ include_directories(${CMAKE_SOURCE_DIR}/src/)
 
 set(SOURCES
     src/provisioning.c
+    src/transform_data.c
 )
 
 # git SHA1 hash
