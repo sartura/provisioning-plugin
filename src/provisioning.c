@@ -56,7 +56,7 @@ provisioning_ubus_json_transform_table_t provisioning_ubus_info_map[] = {
 	{PROVISIONING_XPATH_BASE "/memory-status", NULL,     "memoryKB", transform_data_memory_ubus_transform},
 };
 provisioning_ubus_json_transform_table_t provisioning_ubus_fs_map[] = {
-	{PROVISIONING_XPATH_BASE "/disk-usage", "use_pre", "filesystem", transform_data_disk_ubus_transform},
+	{PROVISIONING_XPATH_BASE "/disk-usage", "filesystem", "use_pre", transform_data_disk_ubus_transform},
 };
 provisioning_ubus_json_transform_table_t provisioning_ubus_memory_map[] = {
 	{PROVISIONING_XPATH_BASE "/version-other-bank",   NULL, "previous_bank_firmware", transform_data_key_ubus_transform},
