@@ -37,7 +37,33 @@ const char *transform_data_subkey_ubus_transform(json_object *json, const char *
 
 const char *transform_data_memory_ubus_transform(json_object *json, const char *parent, const char *name)
 {
-	const char *string = NULL;
+	char *string = NULL;
+	json_object *json_memory;
+	json_object *json_total;
+	json_object *json_used;
+	uint8_t result = 0;
+
+	json_object_object_get_ex(json, name, &json_memory);
+	if (!json_memory)
+		goto out;
+
+	json_object_object_get_ex(json_memory, "total", &json_total);
+	if (!json_total)
+		goto out;
+
+	json_object_object_get_ex(json_memory, "used", &json_used);
+	if (!json_used)
+		goto out;
+
+	result = (uint8_t) ((100 * json_object_get_int(json_used)) / json_object_get_int(json_total));
+
+	string = xmalloc(128);
+	if (!string)
+		goto out;
+
+	sprintf(string, "%d", result);
+
+out:
 	return string;
 }
 

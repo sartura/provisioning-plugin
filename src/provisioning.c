@@ -240,6 +240,7 @@ static void provisioning_ubus_info_cb(const char *ubus_json, srpo_ubus_result_va
 	}
 
 cleanup:
+	FREE_SAFE(string);
 
 	json_object_put(result);
 	return;
