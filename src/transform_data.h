@@ -27,9 +27,9 @@
 
 #include <srpo_ubus.h>
 
-const char *transform_data_key_ubus_transform(json_object *json, const char *parent, const char *name);
-const char *transform_data_subkey_ubus_transform(json_object *json, const char *parent, const char *name);
-const char *transform_data_memory_ubus_transform(json_object *json, const char *parent, const char *name);
-const char *transform_data_disk_ubus_transform(json_object *json, const char *parent, const char *name);
+char *transform_data_key_ubus_transform(json_object *json, const char *parent, const char *name);
+char *transform_data_subkey_ubus_transform(json_object *json, const char *parent, const char *name);
+char *transform_data_memory_ubus_transform(json_object *json, const char *parent, const char *name);
+char *transform_data_disk_ubus_transform(json_object *json, const char *parent, const char *name);
 
 #endif /* TRANSFORM_DATA_H_ONCE */

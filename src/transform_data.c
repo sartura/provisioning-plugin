@@ -4,27 +4,21 @@
 #include "transform_data.h"
 #include "utils/memory.h"
 
-const char *transform_data_key_ubus_transform(json_object *json, const char *parent, const char *name)
+char *transform_data_key_ubus_transform(json_object *json, const char *parent, const char *name)
 {
 	const char *string = NULL;
 	json_object *value;
-
-	if (!name)
-		return string;
 
 	json_object_object_get_ex(json, name, &value);
 	string = json_object_get_string(value);
 
-	return string;
+	return string ? xstrdup(string) : NULL;
 }
 
-const char *transform_data_subkey_ubus_transform(json_object *json, const char *parent, const char *name)
+char *transform_data_subkey_ubus_transform(json_object *json, const char *parent, const char *name)
 {
 	const char *string = NULL;
 	json_object *value;
-
-	if (!parent || !name)
-		return string;
 
 	json_object_object_get_ex(json, parent, &value);
 	string = json_object_get_string(value);
@@ -32,12 +26,12 @@ const char *transform_data_subkey_ubus_transform(json_object *json, const char *
 	json_object_object_get_ex(value, name, &value);
 	string = json_object_get_string(value);
 
-	return string;
+	return string ? xstrdup(string) : NULL;
 }
 
-const char *transform_data_memory_ubus_transform(json_object *json, const char *parent, const char *name)
+char *transform_data_memory_ubus_transform(json_object *json, const char *parent, const char *name)
 {
-	char *string = NULL;
+	char string[20 + 1] = {0};
 	json_object *json_memory;
 	json_object *json_total;
 	json_object *json_used;
@@ -48,26 +42,16 @@ const char *transform_data_memory_ubus_transform(json_object *json, const char *
 		goto out;
 
 	json_object_object_get_ex(json_memory, "total", &json_total);
-	if (!json_total)
-		goto out;
-
 	json_object_object_get_ex(json_memory, "used", &json_used);
-	if (!json_used)
-		goto out;
-
 	result = (uint8_t) ((100 * json_object_get_int(json_used)) / json_object_get_int(json_total));
 
-	string = xmalloc(128);
-	if (!string)
-		goto out;
-
-	sprintf(string, "%d", result);
+	snprintf(string, sizeof(string), "%" PRIu8, result);
 
 out:
-	return string;
+	return string[0] ? xstrdup(string) : NULL;
 }
 
-const char *transform_data_disk_ubus_transform(json_object *json, const char *parent, const char *name)
+char *transform_data_disk_ubus_transform(json_object *json, const char *parent, const char *name)
 {
 	const char *string = NULL;
 	json_object *json_fs;
@@ -76,7 +60,6 @@ const char *transform_data_disk_ubus_transform(json_object *json, const char *pa
 	size_t array_size = 0;
 
 	json_object_object_get_ex(json, parent, &json_fs);
-
 	if (json_object_get_type(json_fs) != json_type_array)
 		goto out;
 
@@ -86,23 +69,15 @@ const char *transform_data_disk_ubus_transform(json_object *json, const char *pa
 
 	for (size_t i = 0; i < array_size; i++) {
 		json_element = json_object_array_get_idx(json_fs, i);
-		if (!json_element)
-			goto out;
-
 		json_object_object_get_ex(json_element, "mounted_on", &json_mounted);
-		if (!json_mounted)
-			goto out;
 
 		if (strcmp(json_object_get_string(json_mounted), "/") == 0) {
 			json_object_object_get_ex(json_element, name, &json_fs);
-			if (!json_fs)
-				goto out;
-
 			string = json_object_get_string(json_fs);
 			break;
 		}
 	}
 
 out:
-	return string;
+	return string ? xstrdup(string) : NULL;
 }

@@ -20,7 +20,7 @@
 #define PROVISIONING_YANG_MODEL "terastream-provisioning"
 #define PROVISIONING_XPATH_BASE "/" PROVISIONING_YANG_MODEL ":hgw-diagnostics"
 
-typedef const char *(*transform_data_cb)(json_object *, const char *, const char *);
+typedef char *(*transform_data_cb)(json_object *, const char *, const char *);
 
 typedef struct {
 	const char *xpath;
@@ -168,7 +168,6 @@ static int provisioning_state_data_cb(sr_session_ctx_t *session, const char *mod
 			goto out;
 		}
 
-		// json_object_put(json_obj);
 		srpo_ubus_free_result_values(values);
 		values = NULL;
 	}
@@ -183,8 +182,8 @@ out:
 
 static void provisioning_ubus_board_cb(const char *ubus_json, srpo_ubus_result_values_t *values)
 {
+	char *string = NULL;
 	json_object *result = NULL;
-	const char *string = NULL;
 	srpo_ubus_error_e error = SRPO_UBUS_ERR_OK;
 
 	result = json_tokener_parse(ubus_json);
@@ -193,21 +192,25 @@ static void provisioning_ubus_board_cb(const char *ubus_json, srpo_ubus_result_v
 		if (!provisioning_ubus_board_map[i].transform_data)
 			goto cleanup;
 
-		string = (provisioning_ubus_info_map[i].transform_data)(result,
-				provisioning_ubus_info_map[i].parent_name,
-				provisioning_ubus_info_map[i].name);
+		string = (provisioning_ubus_board_map[i].transform_data)(result,
+									 provisioning_ubus_board_map[i].parent_name,
+									 provisioning_ubus_board_map[i].name);
 		if (!string)
 			goto cleanup;
 
 		error = srpo_ubus_result_values_add(values, string, strlen(string),
-				provisioning_ubus_board_map[i].xpath, strlen(provisioning_ubus_board_map[i].xpath),
-				provisioning_ubus_board_map[i].name, strlen(provisioning_ubus_board_map[i].name));
+						    provisioning_ubus_board_map[i].xpath, strlen(provisioning_ubus_board_map[i].xpath),
+						    provisioning_ubus_board_map[i].name, strlen(provisioning_ubus_board_map[i].name));
 		if (error != SRPO_UBUS_ERR_OK) {
+			SRP_LOG_ERR("srpo_ubus_result_values_add error (%d): %s", error, srpo_ubus_error_description_get(error));
 			goto cleanup;
 		}
+
+		FREE_SAFE(string);
 	}
 
 cleanup:
+	FREE_SAFE(string);
 
 	json_object_put(result);
 	return;
@@ -215,8 +218,8 @@ cleanup:
 
 static void provisioning_ubus_info_cb(const char *ubus_json, srpo_ubus_result_values_t *values)
 {
+	char *string = NULL;
 	json_object *result = NULL;
-	const char *string = NULL;
 	srpo_ubus_error_e error = SRPO_UBUS_ERR_OK;
 
 	result = json_tokener_parse(ubus_json);
@@ -235,8 +238,11 @@ static void provisioning_ubus_info_cb(const char *ubus_json, srpo_ubus_result_va
 						    provisioning_ubus_info_map[i].xpath, strlen(provisioning_ubus_info_map[i].xpath),
 						    provisioning_ubus_info_map[i].name, strlen(provisioning_ubus_info_map[i].name));
 		if (error != SRPO_UBUS_ERR_OK) {
+			SRP_LOG_ERR("srpo_ubus_result_values_add error (%d): %s", error, srpo_ubus_error_description_get(error));
 			goto cleanup;
 		}
+
+		FREE_SAFE(string);
 	}
 
 cleanup:
@@ -248,8 +254,8 @@ cleanup:
 
 static void provisioning_ubus_fs_cb(const char *ubus_json, srpo_ubus_result_values_t *values)
 {
+	char *string = NULL;
 	json_object *result = NULL;
-	const char *string = NULL;
 	srpo_ubus_error_e error = SRPO_UBUS_ERR_OK;
 
 	result = json_tokener_parse(ubus_json);
@@ -268,11 +274,15 @@ static void provisioning_ubus_fs_cb(const char *ubus_json, srpo_ubus_result_valu
 						    provisioning_ubus_fs_map[i].xpath, strlen(provisioning_ubus_fs_map[i].xpath),
 						    provisioning_ubus_fs_map[i].name, strlen(provisioning_ubus_fs_map[i].name));
 		if (error != SRPO_UBUS_ERR_OK) {
+			SRP_LOG_ERR("srpo_ubus_result_values_add error (%d): %s", error, srpo_ubus_error_description_get(error));
 			goto cleanup;
 		}
+
+		FREE_SAFE(string);
 	}
 
 cleanup:
+	FREE_SAFE(string);
 
 	json_object_put(result);
 	return;
@@ -280,8 +290,8 @@ cleanup:
 
 static void provisioning_ubus_memory_cb(const char *ubus_json, srpo_ubus_result_values_t *values)
 {
+	char *string = NULL;
         json_object *result = NULL;
-	const char *string = NULL;
 	srpo_ubus_error_e error = SRPO_UBUS_ERR_OK;
 
 	result = json_tokener_parse(ubus_json);
@@ -303,9 +313,12 @@ static void provisioning_ubus_memory_cb(const char *ubus_json, srpo_ubus_result_
 			SRP_LOG_ERR("srpo_ubus_result_values_add error (%d): %s", error, srpo_ubus_error_description_get(error));
 			goto cleanup;
 		}
+
+		FREE_SAFE(string);
 	}
 
 cleanup:
+	FREE_SAFE(string);
 
 	json_object_put(result);
 	return;
