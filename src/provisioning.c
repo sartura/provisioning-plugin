@@ -9,7 +9,6 @@
 #include <sysrepo.h>
 #include <sysrepo/xpath.h>
 
-#include <srpo_uci.h>
 #include <srpo_ubus.h>
 
 #include "transform_data.h"
@@ -41,6 +40,7 @@ static void provisioning_ubus_info_cb(const char *ubus_json, srpo_ubus_result_va
 static void provisioning_ubus_board_cb(const char *ubus_json, srpo_ubus_result_values_t *values);
 static void provisioning_ubus_fs_cb(const char *ubus_json, srpo_ubus_result_values_t *values);
 static void provisioning_ubus_memory_cb(const char *ubus_json, srpo_ubus_result_values_t *values);
+
 static int store_ubus_values_to_datastore(sr_session_ctx_t *session, const char *request_xpath,
 					  srpo_ubus_result_values_t *values, struct lyd_node **parent);
 
@@ -83,12 +83,6 @@ int provisioning_plugin_init_cb(sr_session_ctx_t *session, void **private_data)
 
 	*private_data = NULL;
 
-	error = srpo_uci_init();
-	if (error) {
-		SRP_LOG_ERR("srpo_uci_init error (%d): %s", error, srpo_uci_error_description_get(error));
-		goto error_out;
-	}
-
 	SRP_LOG_INFMSG("start session to startup datastore");
 
 	connection = sr_session_get_connection(session);
@@ -122,8 +116,6 @@ out:
 
 void provisioning_plugin_cleanup_cb(sr_session_ctx_t *session, void *private_data)
 {
-	srpo_uci_cleanup();
-
 	sr_session_ctx_t *startup_session = (sr_session_ctx_t *) private_data;
 
 	if (startup_session) {
