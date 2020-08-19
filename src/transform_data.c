@@ -43,7 +43,7 @@ char *transform_data_memory_ubus_transform(json_object *json, const char *parent
 
 	json_object_object_get_ex(json_memory, "total", &json_total);
 	json_object_object_get_ex(json_memory, "used", &json_used);
-	result = (uint8_t) ((100 * json_object_get_int(json_used)) / json_object_get_int(json_total));
+	result = (uint8_t)((100 * json_object_get_int(json_used)) / json_object_get_int(json_total));
 
 	snprintf(string, sizeof(string), "%" PRIu8, result);
 

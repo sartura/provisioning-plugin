@@ -25,42 +25,38 @@ typedef struct {
 	const char *xpath;
 	const char *parent_name;
 	const char *name;
-        transform_data_cb transform_data;
+	transform_data_cb transform_data;
 } provisioning_ubus_json_transform_table_t;
 
 int provisioning_plugin_init_cb(sr_session_ctx_t *session, void **private_data);
 void provisioning_plugin_cleanup_cb(sr_session_ctx_t *session, void *private_data);
 
-static int provisioning_state_data_cb(sr_session_ctx_t *session, const char *module_name,
-				      const char *path, const char *request_xpath,
-				      uint32_t request_id, struct lyd_node **parent,
-				      void *private_data);
+static int provisioning_state_data_cb(sr_session_ctx_t *session, const char *module_name, const char *path, const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data);
 
 static void provisioning_ubus_info_cb(const char *ubus_json, srpo_ubus_result_values_t *values);
 static void provisioning_ubus_board_cb(const char *ubus_json, srpo_ubus_result_values_t *values);
 static void provisioning_ubus_fs_cb(const char *ubus_json, srpo_ubus_result_values_t *values);
 static void provisioning_ubus_memory_cb(const char *ubus_json, srpo_ubus_result_values_t *values);
 
-static int store_ubus_values_to_datastore(sr_session_ctx_t *session, const char *request_xpath,
-					  srpo_ubus_result_values_t *values, struct lyd_node **parent);
+static int store_ubus_values_to_datastore(sr_session_ctx_t *session, const char *request_xpath, srpo_ubus_result_values_t *values, struct lyd_node **parent);
 
 provisioning_ubus_json_transform_table_t provisioning_ubus_board_map[] = {
 	{PROVISIONING_XPATH_BASE "/version", "revision", "release", transform_data_subkey_ubus_transform},
 };
 provisioning_ubus_json_transform_table_t provisioning_ubus_info_map[] = {
-	{PROVISIONING_XPATH_BASE "/name",          "system", "name",     transform_data_subkey_ubus_transform},
-	{PROVISIONING_XPATH_BASE "/board-id",      "system", "boardid",  transform_data_subkey_ubus_transform},
-	{PROVISIONING_XPATH_BASE "/hardware",      "system", "hardware", transform_data_subkey_ubus_transform},
-	{PROVISIONING_XPATH_BASE "/model",         "system", "model",    transform_data_subkey_ubus_transform},
-	{PROVISIONING_XPATH_BASE "/cpu-usage",     "system", "cpu_per",  transform_data_subkey_ubus_transform},
-	{PROVISIONING_XPATH_BASE "/memory-status", NULL,     "memoryKB", transform_data_memory_ubus_transform},
+	{PROVISIONING_XPATH_BASE "/name", "system", "name", transform_data_subkey_ubus_transform},
+	{PROVISIONING_XPATH_BASE "/board-id", "system", "boardid", transform_data_subkey_ubus_transform},
+	{PROVISIONING_XPATH_BASE "/hardware", "system", "hardware", transform_data_subkey_ubus_transform},
+	{PROVISIONING_XPATH_BASE "/model", "system", "model", transform_data_subkey_ubus_transform},
+	{PROVISIONING_XPATH_BASE "/cpu-usage", "system", "cpu_per", transform_data_subkey_ubus_transform},
+	{PROVISIONING_XPATH_BASE "/memory-status", NULL, "memoryKB", transform_data_memory_ubus_transform},
 };
 provisioning_ubus_json_transform_table_t provisioning_ubus_fs_map[] = {
 	{PROVISIONING_XPATH_BASE "/disk-usage", "filesystem", "use_pre", transform_data_disk_ubus_transform},
 };
 provisioning_ubus_json_transform_table_t provisioning_ubus_memory_map[] = {
-	{PROVISIONING_XPATH_BASE "/version-other-bank",   NULL, "previous_bank_firmware", transform_data_key_ubus_transform},
-	{PROVISIONING_XPATH_BASE "/version-running-bank", NULL, "current_bank_firmware",  transform_data_key_ubus_transform},
+	{PROVISIONING_XPATH_BASE "/version-other-bank", NULL, "previous_bank_firmware", transform_data_key_ubus_transform},
+	{PROVISIONING_XPATH_BASE "/version-running-bank", NULL, "current_bank_firmware", transform_data_key_ubus_transform},
 };
 
 static struct {
@@ -68,9 +64,9 @@ static struct {
 	const char *method;
 	srpo_ubus_transform_data_cb transform_data;
 } provisioning_provider_table[] = {
-	{"system",	  "board",	 provisioning_ubus_board_cb},
-	{"router.system", "info",	 provisioning_ubus_info_cb},
-	{"router.system", "fs",		 provisioning_ubus_fs_cb},
+	{"system", "board", provisioning_ubus_board_cb},
+	{"router.system", "info", provisioning_ubus_info_cb},
+	{"router.system", "fs", provisioning_ubus_fs_cb},
 	{"router.system", "memory_bank", provisioning_ubus_memory_cb},
 };
 
@@ -94,9 +90,7 @@ int provisioning_plugin_init_cb(sr_session_ctx_t *session, void **private_data)
 
 	*private_data = startup_session;
 
-	error = sr_oper_get_items_subscribe(session, PROVISIONING_YANG_MODEL, PROVISIONING_XPATH_BASE,
-			                    provisioning_state_data_cb, *private_data,
-			                    SR_SUBSCR_DEFAULT, &subscription);
+	error = sr_oper_get_items_subscribe(session, PROVISIONING_YANG_MODEL, PROVISIONING_XPATH_BASE, provisioning_state_data_cb, *private_data, SR_SUBSCR_DEFAULT, &subscription);
 	if (error) {
 		SRP_LOG_ERR("sr_oper_get_items_subscribe error (%d): %s", error, sr_strerror(error));
 		goto error_out;
@@ -125,17 +119,12 @@ void provisioning_plugin_cleanup_cb(sr_session_ctx_t *session, void *private_dat
 	SRP_LOG_INFMSG("plugin cleanup finished");
 }
 
-static int provisioning_state_data_cb(sr_session_ctx_t *session, const char *module_name,
-				  const char *path, const char *request_xpath,
-				  uint32_t request_id, struct lyd_node **parent,
-				  void *private_data)
+static int provisioning_state_data_cb(sr_session_ctx_t *session, const char *module_name, const char *path, const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data)
 {
 	int error = SRPO_UBUS_ERR_OK;
 	srpo_ubus_result_values_t *values = NULL;
 	srpo_ubus_call_data_t ubus_call_data = {
-		.lookup_path = NULL, .method = NULL, .transform_data_cb = NULL,
-		.timeout = 0, .json_call_arguments = NULL
-	};
+		.lookup_path = NULL, .method = NULL, .transform_data_cb = NULL, .timeout = 0, .json_call_arguments = NULL};
 
 	if (strcmp(path, PROVISIONING_XPATH_BASE) != 0 && strcmp(path, "*") != 0)
 		return SR_ERR_OK;
@@ -184,15 +173,15 @@ static void provisioning_ubus_board_cb(const char *ubus_json, srpo_ubus_result_v
 		if (!provisioning_ubus_board_map[i].transform_data)
 			goto cleanup;
 
-		string = (provisioning_ubus_board_map[i].transform_data)(result,
-									 provisioning_ubus_board_map[i].parent_name,
-									 provisioning_ubus_board_map[i].name);
+		string = (provisioning_ubus_board_map[i].transform_data)(result, provisioning_ubus_board_map[i].parent_name, provisioning_ubus_board_map[i].name);
 		if (!string)
 			goto cleanup;
 
-		error = srpo_ubus_result_values_add(values, string, strlen(string),
-						    provisioning_ubus_board_map[i].xpath, strlen(provisioning_ubus_board_map[i].xpath),
-						    provisioning_ubus_board_map[i].name, strlen(provisioning_ubus_board_map[i].name));
+		error = srpo_ubus_result_values_add(values,
+											string,
+											strlen(string),
+											provisioning_ubus_board_map[i].xpath, strlen(provisioning_ubus_board_map[i].xpath),
+											provisioning_ubus_board_map[i].name, strlen(provisioning_ubus_board_map[i].name));
 		if (error != SRPO_UBUS_ERR_OK) {
 			SRP_LOG_ERR("srpo_ubus_result_values_add error (%d): %s", error, srpo_ubus_error_description_get(error));
 			goto cleanup;
@@ -220,15 +209,15 @@ static void provisioning_ubus_info_cb(const char *ubus_json, srpo_ubus_result_va
 		if (!provisioning_ubus_info_map[i].transform_data)
 			goto cleanup;
 
-		string = (provisioning_ubus_info_map[i].transform_data)(result,
-									provisioning_ubus_info_map[i].parent_name,
-									provisioning_ubus_info_map[i].name);
+		string = (provisioning_ubus_info_map[i].transform_data)(result, provisioning_ubus_info_map[i].parent_name, provisioning_ubus_info_map[i].name);
 		if (!string)
 			goto cleanup;
 
-		error = srpo_ubus_result_values_add(values, string, strlen(string),
-						    provisioning_ubus_info_map[i].xpath, strlen(provisioning_ubus_info_map[i].xpath),
-						    provisioning_ubus_info_map[i].name, strlen(provisioning_ubus_info_map[i].name));
+		error = srpo_ubus_result_values_add(values,
+											string,
+											strlen(string),
+											provisioning_ubus_info_map[i].xpath, strlen(provisioning_ubus_info_map[i].xpath),
+											provisioning_ubus_info_map[i].name, strlen(provisioning_ubus_info_map[i].name));
 		if (error != SRPO_UBUS_ERR_OK) {
 			SRP_LOG_ERR("srpo_ubus_result_values_add error (%d): %s", error, srpo_ubus_error_description_get(error));
 			goto cleanup;
@@ -256,15 +245,15 @@ static void provisioning_ubus_fs_cb(const char *ubus_json, srpo_ubus_result_valu
 		if (!provisioning_ubus_fs_map[i].transform_data)
 			goto cleanup;
 
-		string = (provisioning_ubus_fs_map[i].transform_data)(result,
-								      provisioning_ubus_fs_map[i].parent_name,
-								      provisioning_ubus_fs_map[i].name);
+		string = (provisioning_ubus_fs_map[i].transform_data)(result, provisioning_ubus_fs_map[i].parent_name, provisioning_ubus_fs_map[i].name);
 		if (!string)
 			goto cleanup;
 
-		error = srpo_ubus_result_values_add(values, string, strlen(string),
-						    provisioning_ubus_fs_map[i].xpath, strlen(provisioning_ubus_fs_map[i].xpath),
-						    provisioning_ubus_fs_map[i].name, strlen(provisioning_ubus_fs_map[i].name));
+		error = srpo_ubus_result_values_add(values,
+											string,
+											strlen(string),
+											provisioning_ubus_fs_map[i].xpath, strlen(provisioning_ubus_fs_map[i].xpath),
+											provisioning_ubus_fs_map[i].name, strlen(provisioning_ubus_fs_map[i].name));
 		if (error != SRPO_UBUS_ERR_OK) {
 			SRP_LOG_ERR("srpo_ubus_result_values_add error (%d): %s", error, srpo_ubus_error_description_get(error));
 			goto cleanup;
@@ -283,7 +272,7 @@ cleanup:
 static void provisioning_ubus_memory_cb(const char *ubus_json, srpo_ubus_result_values_t *values)
 {
 	char *string = NULL;
-        json_object *result = NULL;
+	json_object *result = NULL;
 	srpo_ubus_error_e error = SRPO_UBUS_ERR_OK;
 
 	result = json_tokener_parse(ubus_json);
@@ -292,15 +281,15 @@ static void provisioning_ubus_memory_cb(const char *ubus_json, srpo_ubus_result_
 		if (!provisioning_ubus_memory_map[i].transform_data)
 			goto cleanup;
 
-		string = (provisioning_ubus_memory_map[i].transform_data)(result,
-									  provisioning_ubus_memory_map[i].parent_name,
-									  provisioning_ubus_memory_map[i].name);
+		string = (provisioning_ubus_memory_map[i].transform_data)(result, provisioning_ubus_memory_map[i].parent_name, provisioning_ubus_memory_map[i].name);
 		if (!string)
 			goto cleanup;
 
-		error = srpo_ubus_result_values_add(values, string, strlen(string),
-						    provisioning_ubus_memory_map[i].xpath, strlen(provisioning_ubus_memory_map[i].xpath),
-						    provisioning_ubus_memory_map[i].name, strlen(provisioning_ubus_memory_map[i].name));
+		error = srpo_ubus_result_values_add(values,
+											string,
+											strlen(string),
+											provisioning_ubus_memory_map[i].xpath, strlen(provisioning_ubus_memory_map[i].xpath),
+											provisioning_ubus_memory_map[i].name, strlen(provisioning_ubus_memory_map[i].name));
 		if (error != SRPO_UBUS_ERR_OK) {
 			SRP_LOG_ERR("srpo_ubus_result_values_add error (%d): %s", error, srpo_ubus_error_description_get(error));
 			goto cleanup;
@@ -333,8 +322,6 @@ static int store_ubus_values_to_datastore(sr_session_ctx_t *session, const char 
 
 	return 0;
 }
-
-
 
 #ifndef PLUGIN
 #include <signal.h>
