@@ -178,8 +178,7 @@ static void provisioning_ubus_board_cb(const char *ubus_json, srpo_ubus_result_v
 			goto cleanup;
 
 		error = srpo_ubus_result_values_add(values,
-											string,
-											strlen(string),
+											string, strlen(string),
 											provisioning_ubus_board_map[i].xpath, strlen(provisioning_ubus_board_map[i].xpath),
 											provisioning_ubus_board_map[i].name, strlen(provisioning_ubus_board_map[i].name));
 		if (error != SRPO_UBUS_ERR_OK) {
@@ -214,8 +213,7 @@ static void provisioning_ubus_info_cb(const char *ubus_json, srpo_ubus_result_va
 			goto cleanup;
 
 		error = srpo_ubus_result_values_add(values,
-											string,
-											strlen(string),
+											string, strlen(string),
 											provisioning_ubus_info_map[i].xpath, strlen(provisioning_ubus_info_map[i].xpath),
 											provisioning_ubus_info_map[i].name, strlen(provisioning_ubus_info_map[i].name));
 		if (error != SRPO_UBUS_ERR_OK) {
@@ -250,8 +248,7 @@ static void provisioning_ubus_fs_cb(const char *ubus_json, srpo_ubus_result_valu
 			goto cleanup;
 
 		error = srpo_ubus_result_values_add(values,
-											string,
-											strlen(string),
+											string, strlen(string),
 											provisioning_ubus_fs_map[i].xpath, strlen(provisioning_ubus_fs_map[i].xpath),
 											provisioning_ubus_fs_map[i].name, strlen(provisioning_ubus_fs_map[i].name));
 		if (error != SRPO_UBUS_ERR_OK) {
@@ -286,8 +283,7 @@ static void provisioning_ubus_memory_cb(const char *ubus_json, srpo_ubus_result_
 			goto cleanup;
 
 		error = srpo_ubus_result_values_add(values,
-											string,
-											strlen(string),
+											string, strlen(string),
 											provisioning_ubus_memory_map[i].xpath, strlen(provisioning_ubus_memory_map[i].xpath),
 											provisioning_ubus_memory_map[i].name, strlen(provisioning_ubus_memory_map[i].name));
 		if (error != SRPO_UBUS_ERR_OK) {
