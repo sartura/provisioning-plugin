@@ -28,9 +28,6 @@ typedef struct {
 	transform_data_cb transform_data;
 } provisioning_ubus_json_transform_table_t;
 
-int provisioning_plugin_init_cb(sr_session_ctx_t *session, void **private_data);
-void provisioning_plugin_cleanup_cb(sr_session_ctx_t *session, void *private_data);
-
 static int provisioning_state_data_cb(sr_session_ctx_t *session, const char *module_name, const char *path, const char *request_xpath, uint32_t request_id, struct lyd_node **parent, void *private_data);
 
 static void provisioning_ubus_info_cb(const char *ubus_json, srpo_ubus_result_values_t *values);
@@ -70,7 +67,7 @@ static struct {
 	{"router.system", "memory_bank", provisioning_ubus_memory_cb},
 };
 
-int provisioning_plugin_init_cb(sr_session_ctx_t *session, void **private_data)
+int sr_plugin_init_cb(sr_session_ctx_t *session, void **private_data)
 {
 	int error = 0;
 	sr_conn_ctx_t *connection = NULL;
@@ -108,7 +105,7 @@ out:
 	return error ? SR_ERR_CALLBACK_FAILED : SR_ERR_OK;
 }
 
-void provisioning_plugin_cleanup_cb(sr_session_ctx_t *session, void *private_data)
+void sr_plugin_cleanup_cb(sr_session_ctx_t *session, void *private_data)
 {
 	sr_session_ctx_t *startup_session = (sr_session_ctx_t *) private_data;
 
@@ -348,9 +345,9 @@ int main()
 		goto out;
 	}
 
-	error = provisioning_plugin_init_cb(session, &private_data);
+	error = sr_plugin_init_cb(session, &private_data);
 	if (error) {
-		SRP_LOG_ERRMSG("provisioning_plugin_init_cb error");
+		SRP_LOG_ERRMSG("sr_plugin_init_cb error");
 		goto out;
 	}
 
@@ -362,7 +359,7 @@ int main()
 	}
 
 out:
-	provisioning_plugin_cleanup_cb(session, private_data);
+	sr_plugin_cleanup_cb(session, private_data);
 	sr_disconnect(connection);
 
 	return error ? -1 : 0;
